@@ -269,6 +269,7 @@
     "tour_ai/helpers.py",
     "tour_ai/hotspot_suggestions.py",
     "tour_ai/jobs.py",
+    "tour_ai/panorama.py",
     "tour_ai/scene_analysis.py",
     "tour_ai/spatial.py",
     "tour_ai/stitch.py",

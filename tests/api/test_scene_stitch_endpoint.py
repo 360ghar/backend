@@ -122,3 +122,63 @@ class TestSceneStitchEndpoint:
         )
 
         assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_accepts_frame_metadata_and_camera_profile(self, user_client, db_session, test_user):
+        scene = await _make_scene(db_session, test_user)
+        patch_track, patch_run = _patched_stitch_background()
+
+        payload = {
+            "frame_urls": FRAME_URLS,
+            "frames": [
+                {"url": FRAME_URLS[0], "yaw": 10.5, "pitch": 0.0, "roll": 1.5, "target_index": 4, "low_quality": False},
+                {"url": FRAME_URLS[1], "yaw": 46.5, "pitch": 0.0, "roll": -2.0, "target_index": 5, "low_quality": True},
+            ],
+            "camera_profile": {"horizontal_fov": 55.0, "vertical_fov": 69.0},
+        }
+        with patch_track, patch_run as mock_run:
+            response = await user_client.post(
+                f"/api/v1/scenes/{scene.id}/stitch", json=payload
+            )
+
+        assert response.status_code == 200
+        assert response.json()["job"]["status"] == "pending"
+        # Metadata must be forwarded to the worker.
+        call_kwargs = mock_run.call_args.kwargs
+        assert call_kwargs["frames"] == payload["frames"]
+        assert call_kwargs["camera_profile"] == payload["camera_profile"]
+
+    @pytest.mark.asyncio
+    async def test_rejects_frame_metadata_from_unallowed_host(self, user_client, db_session, test_user):
+        scene = await _make_scene(db_session, test_user)
+        patch_track, patch_run = _patched_stitch_background()
+
+        payload = {
+            "frame_urls": FRAME_URLS,
+            "frames": [
+                {"url": "https://evil.example.com/f1.jpg", "yaw": 0.0, "pitch": 0.0, "roll": 0.0},
+                {"url": FRAME_URLS[1], "yaw": 36.0, "pitch": 0.0, "roll": 0.0},
+            ],
+        }
+        with patch_track, patch_run:
+            response = await user_client.post(
+                f"/api/v1/scenes/{scene.id}/stitch", json=payload
+            )
+
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_rejects_single_frame_metadata(self, user_client, db_session, test_user):
+        scene = await _make_scene(db_session, test_user)
+        patch_track, patch_run = _patched_stitch_background()
+
+        payload = {
+            "frame_urls": FRAME_URLS,
+            "frames": [{"url": FRAME_URLS[0], "yaw": 0.0, "pitch": 0.0, "roll": 0.0}],
+        }
+        with patch_track, patch_run:
+            response = await user_client.post(
+                f"/api/v1/scenes/{scene.id}/stitch", json=payload
+            )
+
+        assert response.status_code == 422

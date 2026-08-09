@@ -101,9 +101,11 @@ async def stitch_scene(
     """
     Stitch captured frames into a panorama for a scene in the cloud.
 
-    Downloads the frames, stitches them with OpenCV, pads the result to a
-    2:1 equirect canvas, and replaces the scene image. Returns a job ID for
-    tracking progress (also broadcast over the jobs WebSocket).
+    With per-frame metadata (`frames` + `camera_profile`) the metadata-driven
+    equirect blend runs and the scene image is replaced only when quality
+    validation passes. Legacy requests (frame_urls only) use the OpenCV
+    path. Returns a job ID for tracking progress (also broadcast over the
+    jobs WebSocket).
     """
     try:
         scene = await tour_service.get_scene(db=db, scene_id=scene_id, user_id=current_user.id)
@@ -111,12 +113,21 @@ async def stitch_scene(
         # Present foreign scenes as missing to avoid leaking their existence.
         raise SceneNotFoundException() from None
 
+    frames = (
+        [f.model_dump() for f in stitch_data.frames]
+        if stitch_data.frames
+        else None
+    )
     job = await tour_ai.request_scene_stitch(
         db=db,
         user_id=current_user.id,
         tour_id=scene.tour_id,
         scene_id=scene_id,
         frame_urls=stitch_data.frame_urls,
+        frames=frames,
+        camera_profile=(
+            stitch_data.camera_profile.model_dump() if stitch_data.camera_profile else None
+        ),
     )
     return {"job": job}
 

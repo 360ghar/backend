@@ -419,9 +419,47 @@ class AIJobResponse(BaseModel):
     job: AIJobBase
 
 
+class SceneFrameMetadata(BaseModel):
+    """Per-frame capture metadata for the metadata-driven cloud stitcher.
+
+    When omitted (legacy requests), the frame is assumed to carry no
+    orientation and the legacy OpenCV path is used.
+    """
+    url: str
+    yaw: float = Field(default=0.0, ge=-360, le=360, description="Degrees, east-positive")
+    pitch: float = Field(default=0.0, ge=-90, le=90)
+    roll: float = Field(default=0.0, ge=-180, le=180)
+    target_index: int | None = Field(default=None, ge=0, le=63)
+    low_quality: bool = False
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        parsed = urlparse(v)
+        if parsed.scheme != "https" or parsed.hostname not in ALLOWED_FRAME_HOSTS:
+            raise ValueError(
+                f"frame urls must be https URLs from allowed hosts, got: {v}"
+            )
+        return v
+
+
+class CameraProfileIn(BaseModel):
+    """Camera geometry the capture was planned with (fallback 55x69 when
+    absent — matches the mobile documented fallback profile)."""
+    horizontal_fov: float = Field(default=55.0, gt=1, le=360)
+    vertical_fov: float = Field(default=69.0, gt=1, le=180)
+
+
 class SceneStitchRequest(BaseModel):
-    """Request payload for cloud panorama stitching of captured frames."""
+    """Request payload for cloud panorama stitching of captured frames.
+
+    Backward compatible: `frame_urls` alone (legacy) still works — the
+    worker falls back to the OpenCV path. When `frames` (with orientation
+    metadata) is present, the metadata-driven equirect blend is used.
+    """
     frame_urls: list[str] = Field(..., min_length=2, max_length=32)
+    frames: list[SceneFrameMetadata] | None = Field(default=None, max_length=32)
+    camera_profile: CameraProfileIn | None = None
 
     @field_validator("frame_urls")
     @classmethod
@@ -432,6 +470,13 @@ class SceneStitchRequest(BaseModel):
                 raise ValueError(
                     f"frame_urls must be https URLs from allowed hosts, got: {url}"
                 )
+        return v
+
+    @field_validator("frames")
+    @classmethod
+    def validate_frames_count(cls, v: list[SceneFrameMetadata] | None) -> list[SceneFrameMetadata] | None:
+        if v is not None and len(v) < 2:
+            raise ValueError("frames must contain at least 2 entries")
         return v
 
 
