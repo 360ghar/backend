@@ -173,7 +173,7 @@ class TestRunSceneStitch:
         """Regression: without rollback-first, update_job_status cannot persist.
 
         Fake session starts clean. After a failure, update_job_status refuses
-        to run unless rollback() was called first Ã¢â‚¬â€ discriminating the ordering
+        to run unless rollback() was called first — discriminating the ordering
         bug that left jobs stuck in 'processing'.
         """
         state = {"rolled_back": False, "failed_status_updates": 0}
@@ -325,7 +325,7 @@ class TestMetadataBlendPath:
         ):
             await self._run(db, factory)
 
-        # The naive panorama stays live Ã¢â‚¬â€ the scene was NOT replaced.
+        # The naive panorama stays live — ‚— €—  the scene was NOT replaced.
         assert scene.image_url == "https://old.example.com/p.jpg"
         fake_cloudinary.assert_not_called()
         final_call = mock_update.await_args_list[-1]
