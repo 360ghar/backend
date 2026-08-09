@@ -1,7 +1,7 @@
 """
 API tests for POST /api/v1/scenes/{scene_id}/stitch.
 
-The background stitch runner is patched out — these tests cover job
+The background stitch runner is patched out Ã¢â‚¬â€ these tests cover job
 creation, ownership gating (404 on foreign/missing scenes), and payload
 validation.
 """
@@ -16,7 +16,7 @@ import pytest
 from app.models.enums import TourStatus, TourVisibility
 from app.models.tours import Scene, Tour
 
-FRAME_URLS = ["https://cdn.example.com/f1.jpg", "https://cdn.example.com/f2.jpg"]
+FRAME_URLS = ["https://res.cloudinary.com/f1.jpg", "https://res.cloudinary.com/f2.jpg"]
 
 
 async def _make_scene(db_session, user) -> Scene:
@@ -32,7 +32,7 @@ async def _make_scene(db_session, user) -> Scene:
     scene = Scene(
         id=str(uuid.uuid4()),
         tour_id=tour.id,
-        image_url="https://cdn.example.com/pano.jpg",
+        image_url="https://res.cloudinary.com/pano.jpg",
         order_index=0,
     )
     db_session.add(scene)
@@ -96,7 +96,7 @@ class TestSceneStitchEndpoint:
 
         response = await user_client.post(
             f"/api/v1/scenes/{scene.id}/stitch",
-            json={"frame_urls": ["https://cdn.example.com/f1.jpg"]},
+            json={"frame_urls": ["https://res.cloudinary.com/f1.jpg"]},
         )
 
         assert response.status_code == 422
@@ -104,7 +104,7 @@ class TestSceneStitchEndpoint:
     @pytest.mark.asyncio
     async def test_rejects_more_than_32_frames(self, user_client, db_session, test_user):
         scene = await _make_scene(db_session, test_user)
-        urls = [f"https://cdn.example.com/f{i}.jpg" for i in range(33)]
+        urls = [f"https://res.cloudinary.com/f{i}.jpg" for i in range(33)]
 
         response = await user_client.post(
             f"/api/v1/scenes/{scene.id}/stitch", json={"frame_urls": urls}
@@ -118,7 +118,7 @@ class TestSceneStitchEndpoint:
 
         response = await user_client.post(
             f"/api/v1/scenes/{scene.id}/stitch",
-            json={"frame_urls": ["ftp://example.com/f1.jpg", "https://cdn.example.com/f2.jpg"]},
+            json={"frame_urls": ["ftp://example.com/f1.jpg", "https://res.cloudinary.com/f2.jpg"]},
         )
 
         assert response.status_code == 422

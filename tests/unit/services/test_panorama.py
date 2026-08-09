@@ -218,9 +218,11 @@ class TestBlend:
         metrics = panorama.metrics_from_stats(stats, [1.0, 1.0, 1.0], 80.0, 512, 256, 0)
         assert any("Coverage incomplete" in w for w in metrics["warnings"])
 
-    def test_skipped_and_low_quality_frames_still_work(self):
-        # One skipped frame (gap), one low-quality frame: the blend still
-        # succeeds and the low-quality frame contributes at reduced weight.
+    def test_low_quality_frame_still_contributes(self):
+        # A low-quality (hysteresis-accepted) frame must not break the blend:
+        # it keeps contributing at reduced weight. (Gap behavior is covered
+        # by test_missing_frames_leave_honest_gaps — the layout here is
+        # contiguous by design.)
         frames = [
             _frame(0.0, seed=0),
             _frame(45.0, seed=1),
@@ -230,6 +232,10 @@ class TestBlend:
         pano, stats, _ = panorama.blend_equirect(frames, h_fov=60.0, width=512, height=256)
         assert stats.covered_pixels > 0
         assert pano.dtype == np.uint8
+        # The low-quality frame's central region is still painted (weight is
+        # reduced, never zero): its marker column sits inside another frame's
+        # footprint too, so the region is covered either way.
+        assert stats.middle_covered > 0
 
 
 class TestQuality:

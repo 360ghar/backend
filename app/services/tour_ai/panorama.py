@@ -21,9 +21,10 @@ _LUMA_BGR = np.array([0.114, 0.587, 0.299])
 OUT_WIDTH = 2048
 OUT_HEIGHT = 1024
 
-# Quality-gate thresholds for cloud refinement (see stitch.py).
+# Hard coverage gate for cloud refinement (see stitch.py). The overall score
+# is REPORTED only — coverage + 2:1 + encodability are the enforced gates;
+# a soft/blurred but fully covered room must still be refinable.
 MIN_COVERAGE_PERCENT = 60.0
-MIN_OVERALL_SCORE = 40.0
 
 
 @dataclass(frozen=True)
@@ -109,6 +110,14 @@ def blend_equirect(
     """
     if not frames:
         raise ValueError("no frames to blend")
+    # The pinhole tangent tables are undefined at/above 180° — a persisted or
+    # client-supplied boundary FOV would produce a singular/collapsed
+    # projection that could still pass the coverage gate.
+    if h_fov <= 0 or h_fov >= 180 or v_fov <= 0 or v_fov >= 180:
+        raise ValueError(
+            f"camera FOV must be in the open (0, 180) range, got "
+            f"h_fov={h_fov}, v_fov={v_fov}"
+        )
     if gains is None:
         means = [float(np.mean(cv2_gray(f.image))) for f in frames]
         gains = compute_gains(means)

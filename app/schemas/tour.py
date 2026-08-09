@@ -429,7 +429,13 @@ class SceneFrameMetadata(BaseModel):
     yaw: float = Field(default=0.0, ge=-360, le=360, description="Degrees, east-positive")
     pitch: float = Field(default=0.0, ge=-90, le=90)
     roll: float = Field(default=0.0, ge=-180, le=180)
-    target_index: int | None = Field(default=None, ge=0, le=63)
+    target_index: int | None = Field(
+        default=None,
+        ge=0,
+        le=63,
+        description="Client bookkeeping only (capture-plan slot); the "
+        "blend worker does not consume it.",
+    )
     low_quality: bool = False
 
     @field_validator("url")
@@ -445,9 +451,10 @@ class SceneFrameMetadata(BaseModel):
 
 class CameraProfileIn(BaseModel):
     """Camera geometry the capture was planned with (fallback 55x69 when
-    absent — matches the mobile documented fallback profile)."""
-    horizontal_fov: float = Field(default=55.0, gt=1, le=360)
-    vertical_fov: float = Field(default=69.0, gt=1, le=180)
+    absent — matches the mobile documented fallback profile). FOVs must be
+    strictly below 180°: the pinhole projection is singular at 180°."""
+    horizontal_fov: float = Field(default=55.0, gt=1, lt=180)
+    vertical_fov: float = Field(default=69.0, gt=1, lt=180)
 
 
 class SceneStitchRequest(BaseModel):

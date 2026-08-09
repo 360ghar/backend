@@ -173,7 +173,7 @@ class TestRunSceneStitch:
         """Regression: without rollback-first, update_job_status cannot persist.
 
         Fake session starts clean. After a failure, update_job_status refuses
-        to run unless rollback() was called first — discriminating the ordering
+        to run unless rollback() was called first Ã¢â‚¬â€ discriminating the ordering
         bug that left jobs stuck in 'processing'.
         """
         state = {"rolled_back": False, "failed_status_updates": 0}
@@ -240,14 +240,16 @@ class TestMetadataBlendPath:
     """The metadata-driven equirect path with its quality gate."""
 
     FRAMES = [
-        {"url": "https://cdn.example.com/f1.jpg", "yaw": 0.0, "pitch": 0.0, "roll": 0.0},
-        {"url": "https://cdn.example.com/f2.jpg", "yaw": 36.0, "pitch": 0.0, "roll": 1.5},
+        {"url": "https://res.cloudinary.com/f1.jpg", "yaw": 0.0, "pitch": 0.0, "roll": 0.0},
+        {"url": "https://res.cloudinary.com/f2.jpg", "yaw": 36.0, "pitch": 0.0, "roll": 1.5},
     ]
     PROFILE = {"horizontal_fov": 55.0, "vertical_fov": 69.0}
 
     def _patch_blend(self, quality_ok: bool):
-        """Patches the pure panorama functions so the runner exercises the
-        orchestration without real blending."""
+        """Patches blending so the runner exercises the orchestration, but
+        the QUALITY GATE stays REAL: validate_equirect (the hard 60% coverage
+        threshold + 2:1 + encodability) runs on the mocked panorama, so a
+        regression in the gate itself fails this test."""
         pano = np.zeros((512, 1024, 3), dtype=np.uint8)
         stats = stitch.panorama.BlendStats(
             total_pixels=512 * 1024,
@@ -269,9 +271,6 @@ class TestMetadataBlendPath:
         return (
             patch("app.services.tour_ai.stitch.panorama.blend_equirect", return_value=(pano, stats, [1.0, 1.0])),
             patch("app.services.tour_ai.stitch.panorama.sharpness_score", return_value=80.0),
-            patch("app.services.tour_ai.stitch.panorama.validate_equirect", side_effect=(
-                lambda image, coverage: [] if quality_ok else ["coverage 20.0% below minimum 60.0%"]
-            )),
             patch("app.services.tour_ai.stitch.panorama.metrics_from_stats", return_value=quality),
         )
 
@@ -289,13 +288,13 @@ class TestMetadataBlendPath:
         fake_cloudinary.upload_file.return_value = {
             "secure_url": "https://cdn.example.com/refined.jpg"
         }
-        blend_patch, sharp_patch, validate_patch, metrics_patch = self._patch_blend(True)
+        blend_patch, sharp_patch, metrics_patch = self._patch_blend(True)
 
         with (
             patch("app.services.tour_ai.stitch.get_bg_session_factory", return_value=factory),
             patch("app.services.tour_ai.stitch._download_image_bytes", new_callable=AsyncMock, return_value=b"bytes"),
             patch("app.services.tour_ai.stitch._decode_and_downscale", return_value=np.zeros((400, 400, 3), dtype=np.uint8)),
-            blend_patch, sharp_patch, validate_patch, metrics_patch,
+            blend_patch, sharp_patch, metrics_patch,
             patch("app.services.cloudinary.get_cloudinary_service", return_value=fake_cloudinary),
             patch("app.services.tour.schedule_scene_processing") as mock_schedule,
             patch("app.services.tour_ai.stitch.update_job_status", new_callable=AsyncMock) as mock_update,
@@ -314,19 +313,19 @@ class TestMetadataBlendPath:
     async def test_quality_failure_does_not_replace_scene(self):
         scene = Scene(id="scene-1", tour_id="tour-1", image_url="https://old.example.com/p.jpg")
         db, factory = _bg_db(scene)
-        blend_patch, sharp_patch, validate_patch, metrics_patch = self._patch_blend(False)
+        blend_patch, sharp_patch, metrics_patch = self._patch_blend(False)
 
         with (
             patch("app.services.tour_ai.stitch.get_bg_session_factory", return_value=factory),
             patch("app.services.tour_ai.stitch._download_image_bytes", new_callable=AsyncMock, return_value=b"bytes"),
             patch("app.services.tour_ai.stitch._decode_and_downscale", return_value=np.zeros((400, 400, 3), dtype=np.uint8)),
-            blend_patch, sharp_patch, validate_patch, metrics_patch,
+            blend_patch, sharp_patch, metrics_patch,
             patch("app.services.cloudinary.get_cloudinary_service") as fake_cloudinary,
             patch("app.services.tour_ai.stitch.update_job_status", new_callable=AsyncMock) as mock_update,
         ):
             await self._run(db, factory)
 
-        # The naive panorama stays live — the scene was NOT replaced.
+        # The naive panorama stays live Ã¢â‚¬â€ the scene was NOT replaced.
         assert scene.image_url == "https://old.example.com/p.jpg"
         fake_cloudinary.assert_not_called()
         final_call = mock_update.await_args_list[-1]
