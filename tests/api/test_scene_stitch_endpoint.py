@@ -1,7 +1,7 @@
 """
 API tests for POST /api/v1/scenes/{scene_id}/stitch.
 
-The background stitch runner is patched out — these tests cover job
+The background stitch runner is patched out â€�? these tests cover job
 creation, ownership gating (404 on foreign/missing scenes), and payload
 validation.
 """
@@ -16,7 +16,7 @@ import pytest
 from app.models.enums import TourStatus, TourVisibility
 from app.models.tours import Scene, Tour
 
-FRAME_URLS = ["https://cdn.example.com/f1.jpg", "https://cdn.example.com/f2.jpg"]
+FRAME_URLS = ["https://res.cloudinary.com/f1.jpg", "https://res.cloudinary.com/f2.jpg"]
 
 
 async def _make_scene(db_session, user) -> Scene:
@@ -32,7 +32,7 @@ async def _make_scene(db_session, user) -> Scene:
     scene = Scene(
         id=str(uuid.uuid4()),
         tour_id=tour.id,
-        image_url="https://cdn.example.com/pano.jpg",
+        image_url="https://res.cloudinary.com/pano.jpg",
         order_index=0,
     )
     db_session.add(scene)
@@ -96,7 +96,7 @@ class TestSceneStitchEndpoint:
 
         response = await user_client.post(
             f"/api/v1/scenes/{scene.id}/stitch",
-            json={"frame_urls": ["https://cdn.example.com/f1.jpg"]},
+            json={"frame_urls": ["https://res.cloudinary.com/f1.jpg"]},
         )
 
         assert response.status_code == 422
@@ -104,7 +104,7 @@ class TestSceneStitchEndpoint:
     @pytest.mark.asyncio
     async def test_rejects_more_than_32_frames(self, user_client, db_session, test_user):
         scene = await _make_scene(db_session, test_user)
-        urls = [f"https://cdn.example.com/f{i}.jpg" for i in range(33)]
+        urls = [f"https://res.cloudinary.com/f{i}.jpg" for i in range(33)]
 
         response = await user_client.post(
             f"/api/v1/scenes/{scene.id}/stitch", json={"frame_urls": urls}
@@ -118,7 +118,67 @@ class TestSceneStitchEndpoint:
 
         response = await user_client.post(
             f"/api/v1/scenes/{scene.id}/stitch",
-            json={"frame_urls": ["ftp://example.com/f1.jpg", "https://cdn.example.com/f2.jpg"]},
+            json={"frame_urls": ["ftp://example.com/f1.jpg", "https://res.cloudinary.com/f2.jpg"]},
         )
+
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_accepts_frame_metadata_and_camera_profile(self, user_client, db_session, test_user):
+        scene = await _make_scene(db_session, test_user)
+        patch_track, patch_run = _patched_stitch_background()
+
+        payload = {
+            "frame_urls": FRAME_URLS,
+            "frames": [
+                {"url": FRAME_URLS[0], "yaw": 10.5, "pitch": 0.0, "roll": 1.5, "target_index": 4, "low_quality": False},
+                {"url": FRAME_URLS[1], "yaw": 46.5, "pitch": 0.0, "roll": -2.0, "target_index": 5, "low_quality": True},
+            ],
+            "camera_profile": {"horizontal_fov": 55.0, "vertical_fov": 69.0},
+        }
+        with patch_track, patch_run as mock_run:
+            response = await user_client.post(
+                f"/api/v1/scenes/{scene.id}/stitch", json=payload
+            )
+
+        assert response.status_code == 200
+        assert response.json()["job"]["status"] == "pending"
+        # Metadata must be forwarded to the worker.
+        call_kwargs = mock_run.call_args.kwargs
+        assert call_kwargs["frames"] == payload["frames"]
+        assert call_kwargs["camera_profile"] == payload["camera_profile"]
+
+    @pytest.mark.asyncio
+    async def test_rejects_frame_metadata_from_unallowed_host(self, user_client, db_session, test_user):
+        scene = await _make_scene(db_session, test_user)
+        patch_track, patch_run = _patched_stitch_background()
+
+        payload = {
+            "frame_urls": FRAME_URLS,
+            "frames": [
+                {"url": "https://evil.example.com/f1.jpg", "yaw": 0.0, "pitch": 0.0, "roll": 0.0},
+                {"url": FRAME_URLS[1], "yaw": 36.0, "pitch": 0.0, "roll": 0.0},
+            ],
+        }
+        with patch_track, patch_run:
+            response = await user_client.post(
+                f"/api/v1/scenes/{scene.id}/stitch", json=payload
+            )
+
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_rejects_single_frame_metadata(self, user_client, db_session, test_user):
+        scene = await _make_scene(db_session, test_user)
+        patch_track, patch_run = _patched_stitch_background()
+
+        payload = {
+            "frame_urls": FRAME_URLS,
+            "frames": [{"url": FRAME_URLS[0], "yaw": 0.0, "pitch": 0.0, "roll": 0.0}],
+        }
+        with patch_track, patch_run:
+            response = await user_client.post(
+                f"/api/v1/scenes/{scene.id}/stitch", json=payload
+            )
 
         assert response.status_code == 422
