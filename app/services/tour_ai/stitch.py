@@ -279,7 +279,11 @@ async def _blend_and_store(
         low_quality_count,
     )
 
-    problems = panorama.validate_equirect(panorama_img, quality["coverage_percent"])
+    # Both the validation (JPEG-encodes a 2048x1024 canvas) and the final
+    # encode are CPU-bound — keep them off the event loop like the blend.
+    problems = await asyncio.to_thread(
+        panorama.validate_equirect, panorama_img, quality["coverage_percent"]
+    )
     if problems:
         logger.warning(
             "Stitch quality validation failed for scene %s: %s", scene_id, problems
@@ -296,7 +300,9 @@ async def _blend_and_store(
         return  # scene NOT replaced — the published naive panorama stays
 
     await update_job_status(db, job_id, "processing", 80)
-    ok, encoded = cv2.imencode(".jpg", panorama_img, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+    ok, encoded = await asyncio.to_thread(
+        cv2.imencode, ".jpg", panorama_img, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
+    )
     del panorama_img
     if not ok:
         raise ValueError("Failed to encode the stitched panorama as JPEG")
