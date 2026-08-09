@@ -1,7 +1,7 @@
 """
 API tests for POST /api/v1/scenes/{scene_id}/stitch.
 
-The background stitch runner is patched out Ã¢â‚¬â€ these tests cover job
+The background stitch runner is patched out â€�? these tests cover job
 creation, ownership gating (404 on foreign/missing scenes), and payload
 validation.
 """

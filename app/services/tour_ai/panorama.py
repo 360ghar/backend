@@ -112,10 +112,18 @@ def blend_equirect(
         raise ValueError("no frames to blend")
     # The pinhole tangent tables are undefined at/above 180° — a persisted or
     # client-supplied boundary FOV would produce a singular/collapsed
-    # projection that could still pass the coverage gate.
-    if h_fov <= 0 or h_fov >= 180 or v_fov <= 0 or v_fov >= 180:
+    # projection that could still pass the coverage gate. NaN/inf FOVs also
+    # bypass plain range comparisons, so they are rejected explicitly.
+    if (
+        not math.isfinite(h_fov)
+        or not math.isfinite(v_fov)
+        or h_fov <= 0
+        or h_fov >= 180
+        or v_fov <= 0
+        or v_fov >= 180
+    ):
         raise ValueError(
-            f"camera FOV must be in the open (0, 180) range, got "
+            f"camera FOV must be finite and in the open (0, 180) range, got "
             f"h_fov={h_fov}, v_fov={v_fov}"
         )
     if gains is None:
